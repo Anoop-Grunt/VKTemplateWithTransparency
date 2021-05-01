@@ -13,7 +13,7 @@ void main()
 	if(gl_FragCoord.x < xHalf)
 	{
 		
-		colour = vec4(subpassLoad(inputColour).rgb, 1.0f);
+		colour = vec4(subpassLoad(inputColour2).rgb, 1.0f);
 	}
 	else
 	{
@@ -21,7 +21,5 @@ void main()
 		//A guess as to why the weird transparency thing happens--> those black(now white) pixels, are actually red pixles with alpha = 0, and they get aggressively blended (cuz a = 0 means transparent)with the background color of the swapchain image(not the intermediate image, I tested this)
 		//When we put a = 1, this blending is avoided, so the originall red is seen
 	}
-	if(gl_FragCoord.x == xHalf){
-		colour = vec4(subpassLoad(inputColour2).rgb, 1.0f);
-	}
+	
 }

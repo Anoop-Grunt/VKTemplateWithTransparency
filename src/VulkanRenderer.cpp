@@ -508,8 +508,6 @@ void VulkanRenderer::createRenderPass()
 
 
 
-
-	//TODO: add the second subpass, and create descriptors for the accumulation buffer(Image), because we need to use it as shader input (subpass input attachment) in the next subpass
 	///////------SUBPASS 2 (translucent geometry) ATTACHMENTS AND REFERENCES -----------/////////////////////////////
 	
 
@@ -649,8 +647,8 @@ void VulkanRenderer::createRenderPass()
 
 	//Vulkan will implictly do the transitions using the dependencies we just provided
 
-	//Now we want to send in both the color attachment and the depth attachment to the render pass create info structure
-	//TODO: add the accumulation color attachment, (and maybe instead of revealage we can just use the alpha channel in the opaque texture, but prolly better to just make another image)
+	//add all the framebuffer attachments while creating the renderpass
+	//TODO: add the revealage color attachment
 	std::array<VkAttachmentDescription, 4> renderPassAttachments = { SwapChainColourAttachment ,colourAttachment, depthAttachment, accumAttachment }; //Order is very important (same as in framebuffer)
 
 	//The render pass create info struct
@@ -987,12 +985,6 @@ void VulkanRenderer::createGraphicsPipeline()
 
 	VkPipelineShaderStageCreateInfo translucentShaderStages[] = { vertexShaderCreateInfo, fragmentShaderCreateInfo };
 
-	//TODO: add actual vertex input and later the descriptors for the samplers, and uniform buffers, in the pSetLayouts
-	vertexInputCreateInfo.vertexBindingDescriptionCount = 0;
-	vertexInputCreateInfo.pVertexBindingDescriptions = nullptr;
-	vertexInputCreateInfo.vertexAttributeDescriptionCount = 0;
-	vertexInputCreateInfo.pVertexAttributeDescriptions = nullptr;
-
 	// Don't want to write to depth buffer
 	depthStencilCreateInfo.depthWriteEnable = VK_FALSE;
 
@@ -1000,10 +992,10 @@ void VulkanRenderer::createGraphicsPipeline()
 	// Create new pipeline layout
 	VkPipelineLayoutCreateInfo translucentPipelineLayoutCreateInfo = {};
 	translucentPipelineLayoutCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-	translucentPipelineLayoutCreateInfo.setLayoutCount = 0;
-	translucentPipelineLayoutCreateInfo.pSetLayouts = nullptr; //TODO: add the VP mats, and the texture samplers here
-	translucentPipelineLayoutCreateInfo.pushConstantRangeCount = 0;
-	translucentPipelineLayoutCreateInfo.pPushConstantRanges = nullptr;
+	translucentPipelineLayoutCreateInfo.setLayoutCount = static_cast<uint32_t>(descriptorSetLayouts.size());
+	translucentPipelineLayoutCreateInfo.pSetLayouts = descriptorSetLayouts.data();
+	translucentPipelineLayoutCreateInfo.pushConstantRangeCount = 1;
+	translucentPipelineLayoutCreateInfo.pPushConstantRanges = &pushConstantRange;
 
 	result = vkCreatePipelineLayout(mainDevice.logicalDevice, &translucentPipelineLayoutCreateInfo, nullptr, &translucentGeometryPipelineLayout);
 	if (result != VK_SUCCESS)
@@ -2124,8 +2116,27 @@ void VulkanRenderer::recordCommands(uint32_t currentImage)
 
 	vkCmdNextSubpass(commandBuffers[currentImage], VK_SUBPASS_CONTENTS_INLINE);
 	vkCmdBindPipeline(commandBuffers[currentImage], VK_PIPELINE_BIND_POINT_GRAPHICS, translucentGeometryPipeline);
-	//TODO: bind the descriptors here, leaving empty for now
-	vkCmdDraw(commandBuffers[currentImage], 3, 1, 0, 0);
+	for (size_t j = 0; j < modelList.size(); j++) {
+		
+		
+		MeshModel thisModel = modelList[j];
+		vkCmdPushConstants(commandBuffers[currentImage], pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(Model), &thisModel.model);
+		
+		
+		for (size_t k = 0; k < thisModel.getTranslucentMeshCount(); k++) {
+			VkBuffer vertexBuffers[] = { thisModel.getTranslucentMesh(k)->getVertexBuffer() };					// Buffers to bind
+			VkDeviceSize offsets[] = { 0 };												// Offsets into buffers being bound
+			vkCmdBindVertexBuffers(commandBuffers[currentImage], 0, 1, vertexBuffers, offsets);	// Command to bind vertex buffer before drawing with them
+			vkCmdBindIndexBuffer(commandBuffers[currentImage], thisModel.getTranslucentMesh(k)->getIndexBuffer(), 0, VK_INDEX_TYPE_UINT32);  //Only one index buffer can be bound at a time (even in openGl remember we had to bind vertex array and index buffer separately)
+			std::array<VkDescriptorSet, 2> descriptorSetGroup = { descriptorSets[currentImage],
+					samplerDescriptorSets[thisModel.getTranslucentMesh(k)->getTexId()] };
+			vkCmdBindDescriptorSets(commandBuffers[currentImage], VK_PIPELINE_BIND_POINT_GRAPHICS, translucentGeometryPipelineLayout,
+				0, static_cast<uint32_t>(descriptorSetGroup.size()), descriptorSetGroup.data(), 0, nullptr);
+			vkCmdDrawIndexed(commandBuffers[currentImage], thisModel.getTranslucentMesh(k)->getIndexCount(), 1, 0, 0, 0);
+			
+		}
+	}
+	
 
 
 	//Start third subpass
