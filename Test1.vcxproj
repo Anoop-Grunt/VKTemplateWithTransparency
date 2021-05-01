@@ -553,6 +553,8 @@
     <None Include="Shaders\second.vert" />
     <None Include="Shaders\shader.frag" />
     <None Include="Shaders\shader.vert" />
+    <None Include="Shaders\translucent.frag" />
+    <None Include="Shaders\translucent.vert" />
     <None Include="Shaders\vert.spv" />
   </ItemGroup>
   <ItemGroup>

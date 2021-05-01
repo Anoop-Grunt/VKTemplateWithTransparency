@@ -1208,6 +1208,8 @@
     <None Include="dependencies\GLFW\lib-vc2019\glfw3.dll" />
     <None Include="Shaders\second.frag" />
     <None Include="Shaders\second.vert" />
+    <None Include="Shaders\translucent.vert" />
+    <None Include="Shaders\translucent.frag" />
   </ItemGroup>
   <ItemGroup>
     <Library Include="dependencies\GLFW\lib-vc2019\glfw3.lib" />

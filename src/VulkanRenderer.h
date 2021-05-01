@@ -93,8 +93,11 @@ private:
 	VkPipeline graphicsPipeline;
 	VkPipelineLayout pipelineLayout;
 
-	VkPipeline secondPipeline;
-	VkPipelineLayout secondPipelineLayout;
+	VkPipeline compositionPipeline;
+	VkPipelineLayout compositionPipelineLayout;
+
+	VkPipeline translucentGeometryPipeline;
+	VkPipelineLayout translucentGeometryPipelineLayout;
 
 	VkRenderPass renderPass;
 
