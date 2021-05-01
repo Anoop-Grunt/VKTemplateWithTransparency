@@ -49,8 +49,8 @@ int main(void)
 	
 	
 	
-	vulkanRenderer.createMeshModel("Models/super_meatboy_free.obj");
-	vulkanRenderer.createMeshModel("Models/pose.obj");
+	vulkanRenderer.createMeshModel("Models/StylishDesk.obj");
+	vulkanRenderer.createMeshModel("Models/cube.obj");
 	vulkanRenderer.createMeshModel("Models/hollow kinght.obj");
 
 

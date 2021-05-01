@@ -528,7 +528,7 @@ void VulkanRenderer::createRenderPass()
 	accumAttachment.finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL; //cuz at the end of this subpasses pipeline we write to this color attachment (I say end of the subpass, but i mean the fragment shader stage)
 	//this attachment needs to be the input attachment to the shader of the next subpass, so we need to transition the layout to shader read only optimal later
 
-	//TODO: check if the depth image needs to be an input or output attachment if we just want to do the depth test, without any depth writes
+
 	// 2. The depth attachment, is the same Image which was used as the depth attachment of the first subpass, but we will have depth write disabled
 	//The attachment structures are only needed by the render pass create info, so we don't need to create the same attachment again, 
 
