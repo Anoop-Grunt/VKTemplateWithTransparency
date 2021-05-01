@@ -13,8 +13,11 @@ public:
 	MeshModel();
 	MeshModel(std::vector<Mesh> newMeshList);
 
-	size_t getMeshCount();
-	Mesh* getMesh(size_t index);
+	size_t getOpaqueMeshCount();
+	Mesh* getOpaqueMesh(size_t index);
+
+	size_t getTranslucentMeshCount();
+	Mesh* getTranslucentMesh(size_t index);
 
 	glm::mat4 getModel();  //Talking about the model matrix here
 	void setModel(glm::mat4 newModel);

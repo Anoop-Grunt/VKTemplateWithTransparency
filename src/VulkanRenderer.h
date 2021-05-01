@@ -30,7 +30,7 @@ public:
 	int init(GLFWwindow* newWindow);
 	void draw();
 	void cleanup();
-	
+
 	void updateCamera(glm::mat4 view, glm::mat4 projection);
 	void updateModel(int modelId, glm::mat4 newModel);
 	~VulkanRenderer();
@@ -42,7 +42,6 @@ private:
 	struct UboViewProjection {
 		glm::mat4 projection;
 		glm::mat4 view;
-		
 	} uboViewProjection;
 
 	glm::vec3 cameraPosition;
@@ -54,7 +53,7 @@ private:
 	std::vector<MeshModel> modelList;
 
 	//Assets
- 	std::vector<VkImage> textureImages;  
+	std::vector<VkImage> textureImages;
 	std::vector<VkDeviceMemory> textureImageMemory;
 	std::vector<VkImageView> textureImageViews;
 
@@ -78,11 +77,13 @@ private:
 	std::vector<VkFramebuffer> swapChainFrameBuffers;
 	std::vector<VkCommandBuffer> commandBuffers;
 
+	std::vector<VkImage> opaqueColorBufferImage;   //One for each swapchain image
+	std::vector<VkDeviceMemory> opaqueColourBufferImageMemory; //One for each swapchain image
+	std::vector <VkImageView> opaqueColourBufferImageView;   //One for each image
 
-	std::vector<VkImage> colourBufferImage;   //One for each swapchain image
-	std::vector<VkDeviceMemory> colourBufferImageMemory; //One for each swapchain image
-	std::vector <VkImageView> colourBufferImageView;   //One for each image
-
+	std::vector<VkImage> accumulationColourBufferImage;   //One for each swapchain image
+	std::vector<VkDeviceMemory> accumulationColourBufferImageMemory; //One for each swapchain image
+	std::vector <VkImageView> accumulationColourBufferImageView;   //One for each image
 
 	std::vector<VkImage> depthBufferImage;    //Now we need one for every image, because we dont want to use the  depth buffer image after the first subpass finished rendering(for the second subpass)
 	std::vector<VkDeviceMemory> depthBufferImageMemory; //Again one for each image
@@ -110,7 +111,6 @@ private:
 	VkFormat depthBufferImageFormat;
 	VkExtent2D swapChainExtent;
 
-	
 	//--Descriptors
 	VkDescriptorSetLayout descriptorSetLayout;
 	VkDescriptorSetLayout samplerSetLayout;
@@ -131,12 +131,12 @@ private:
 
 	//std::vector<VkBuffer> modelDUniformBuffer;
 	//std::vector<VkDeviceMemory> modelDUniformBufferMemory;
-	
+
 	//VkDeviceSize minUniformBufferOffset;
 	//size_t modelUniformAlignment;
 
 	//Model* modelTransferSpace;   //We use this pointer with the right offsets when we are copying data to the Device
-	
+
 	//Vulkan Functions
 	//-->Create Functions
 	void createSwapChain();
@@ -148,7 +148,7 @@ private:
 	void createDescriptorSetLayout();
 	void createPushConstantRange();
 	void createGraphicsPipeline();
-	void createColourBufferImage();
+	void createColourBufferImages();
 	void createDepthBufferImage();
 	void createFramebuffers();
 	void createCommandPool();
@@ -167,7 +167,7 @@ private:
 	void getPhysicalDevice();
 	QueueFamilyIndices getQueueFamilyIndices(VkPhysicalDevice physicalDevice);
 	SwapChainDetails getSwapChainDetails(VkPhysicalDevice device);
-	
+
 	//-->Allocate functions
 	/*void allocateDynamicBufferTransferSpace();*/
 
@@ -177,22 +177,20 @@ private:
 	bool checkInstanceExtensionSupport(const char** extensions, uint32_t extension_count);
 	bool checkPhysicalDeviceSuitable(VkPhysicalDevice physicalDevice);
 	void populateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT& createInfo);
-	
+
 	//-->Choose functions
-	VkSurfaceFormatKHR chooseBestSurfaceFormat(const std::vector<VkSurfaceFormatKHR> &formats);
+	VkSurfaceFormatKHR chooseBestSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& formats);
 	VkPresentModeKHR chooseBestPresentMode(const std::vector<VkPresentModeKHR>& presentationModes);
-	VkExtent2D chooseSwapImageExtent(const VkSurfaceCapabilitiesKHR &surfaceCapabilities);
-	VkFormat chooseSupportedFormat(const std::vector<VkFormat> &formats, VkImageTiling tiling, VkFormatFeatureFlags featureFlags);
+	VkExtent2D chooseSwapImageExtent(const VkSurfaceCapabilitiesKHR& surfaceCapabilities);
+	VkFormat chooseSupportedFormat(const std::vector<VkFormat>& formats, VkImageTiling tiling, VkFormatFeatureFlags featureFlags);
 
 	// -- Hepler Create Functions
-	VkImage createImage(uint32_t width, uint32_t height, VkFormat format, VkImageTiling tiling, VkImageUsageFlags useFlags, VkMemoryPropertyFlags propFlags, VkDeviceMemory *imageMemory);
+	VkImage createImage(uint32_t width, uint32_t height, VkFormat format, VkImageTiling tiling, VkImageUsageFlags useFlags, VkMemoryPropertyFlags propFlags, VkDeviceMemory* imageMemory);
 	VkImageView createImageView(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags);
 	VkShaderModule createShaderModule(const  std::vector<char>& code);
 	int createTextureImage(std::string fileName, GeometryPass& texGeoPass);  //Returns int because we put the texture image into the texture image array and then return the index
 	int createTexture(std::string fileName, GeometryPass& texGeoPass);
 	int createTextureDescriptor(VkImageView textureImage);
-
-	
 
 	//-- Record Functions
 	void recordCommands(uint32_t currentImage);

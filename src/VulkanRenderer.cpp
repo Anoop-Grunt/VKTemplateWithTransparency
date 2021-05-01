@@ -23,7 +23,7 @@ int VulkanRenderer::init(GLFWwindow* newWindow)
 		getPhysicalDevice();
 		CreateLogicalDevice();
 		createSwapChain();
-		createColourBufferImage();
+		createColourBufferImages();
 		createDepthBufferImage();
 		createRenderPass();
 		createDescriptorSetLayout();
@@ -143,10 +143,15 @@ void VulkanRenderer::cleanup()
 		vkDestroyImage(mainDevice.logicalDevice, textureImages[i], nullptr);
 		vkFreeMemory(mainDevice.logicalDevice, textureImageMemory[i], nullptr);
 	}
-	for (size_t i = 0; i < colourBufferImage.size(); i++) {
-		vkDestroyImageView(mainDevice.logicalDevice, colourBufferImageView[i], nullptr);
-		vkDestroyImage(mainDevice.logicalDevice, colourBufferImage[i], nullptr);
-		vkFreeMemory(mainDevice.logicalDevice, colourBufferImageMemory[i], nullptr);
+	for (size_t i = 0; i < opaqueColorBufferImage.size(); i++) {
+		vkDestroyImageView(mainDevice.logicalDevice, opaqueColourBufferImageView[i], nullptr);
+		vkDestroyImage(mainDevice.logicalDevice, opaqueColorBufferImage[i], nullptr);
+		vkFreeMemory(mainDevice.logicalDevice, opaqueColourBufferImageMemory[i], nullptr);
+	}
+	for (size_t i = 0; i < accumulationColourBufferImage.size(); i++) {
+		vkDestroyImageView(mainDevice.logicalDevice, accumulationColourBufferImageView[i], nullptr);
+		vkDestroyImage(mainDevice.logicalDevice, accumulationColourBufferImage[i], nullptr);
+		vkFreeMemory(mainDevice.logicalDevice, accumulationColourBufferImageMemory[i], nullptr);
 	}
 	for (size_t i = 0; i < depthBufferImage.size(); i++) {
 		vkDestroyImageView(mainDevice.logicalDevice, depthBufferImageView[i], nullptr);
@@ -575,6 +580,7 @@ void VulkanRenderer::createRenderPass()
 	//Vulkan will implictly do the transitions using the dependencies we just provided
 
 	//Now we want to send in both the color attachment and the depth attachment to the render pass create info structure
+	//TODO: add the accumulation color attachment, (and maybe instead of revealage we can just use the alpha channel in the opaque texture, but prolly better to just make another image)
 	std::array<VkAttachmentDescription, 3> renderPassAttachments = { SwapChainColourAttachment ,colourAttachment, depthAttachment }; //Order is very important (same as in framebuffer)
 
 	//The render pass create info struct
@@ -943,14 +949,16 @@ void VulkanRenderer::createGraphicsPipeline()
 	vkDestroyShaderModule(mainDevice.logicalDevice, secondVertexShaderModule, nullptr);
 }
 
-void VulkanRenderer::createColourBufferImage()
+void VulkanRenderer::createColourBufferImages()
 {
 	//Create the colour buffer images that the first subpass will output to
 
+	//-------------OPAQUE COLOR IMAGE-------------------------------------//
+
 	//First resize the vectors
-	colourBufferImage.resize(swapChainImages.size());
-	colourBufferImageMemory.resize(swapChainImages.size());
-	colourBufferImageView.resize(swapChainImages.size());
+	opaqueColorBufferImage.resize(swapChainImages.size());
+	opaqueColourBufferImageMemory.resize(swapChainImages.size());
+	opaqueColourBufferImageView.resize(swapChainImages.size());
 
 	//Now get the supported format for the colour attachment
 	VkFormat colourFormat = chooseSupportedFormat(
@@ -958,13 +966,33 @@ void VulkanRenderer::createColourBufferImage()
 	);
 
 	//Now loop through the vector and create the images
-	for (size_t i = 0; i < colourBufferImage.size(); i++) {
+	for (size_t i = 0; i < opaqueColorBufferImage.size(); i++) {
 		//Create the image
-		//in the usage flags we put colour attachmnet bit(subpass 1) and input attachment bit(subpass 2)
-		colourBufferImage[i] = createImage(swapChainExtent.width, swapChainExtent.height, colourFormat, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &colourBufferImageMemory[i]);
+		//in the usage flags we put colour attachmnet bit(subpass 1) and input attachment bit(subpass 3)
+		opaqueColorBufferImage[i] = createImage(swapChainExtent.width, swapChainExtent.height, colourFormat, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &opaqueColourBufferImageMemory[i]);
 
 		//create the image views
-		colourBufferImageView[i] = createImageView(colourBufferImage[i], colourFormat, VK_IMAGE_ASPECT_COLOR_BIT);
+		opaqueColourBufferImageView[i] = createImageView(opaqueColorBufferImage[i], colourFormat, VK_IMAGE_ASPECT_COLOR_BIT);
+	}
+
+	//---------------------ACCUMULATION COLOUR IMAGE------------------------------------------//
+
+	accumulationColourBufferImage.resize(swapChainImages.size());
+	accumulationColourBufferImageView.resize(swapChainImages.size());
+	accumulationColourBufferImageMemory.resize(swapChainImages.size());
+
+	//Now get the supported format for the colour attachment
+	colourFormat = chooseSupportedFormat(
+		{ VK_FORMAT_R16G16B16A16_SFLOAT }, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL  //Like the swapchain images earlier
+	);  //as can be seen we need atleats 16 bits for each of the accumulation texture channels
+
+	//Now create the accum color images for each swapchain image
+	for (size_t i = 0; i < accumulationColourBufferImage.size(); i++) {
+		//create the image
+		//the usage flags are again output attachment for subpass 2 and inupt for subpass 3
+		accumulationColourBufferImage[i] = createImage(swapChainExtent.width, swapChainExtent.height, colourFormat, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &accumulationColourBufferImageMemory[i]);
+		//now create the image views
+		accumulationColourBufferImageView[i] = createImageView(accumulationColourBufferImage[i], colourFormat, VK_IMAGE_ASPECT_COLOR_BIT);
 	}
 }
 
@@ -1007,10 +1035,11 @@ void VulkanRenderer::createFramebuffers()
 		//We add both the color, and the depth attachments (which are image views in this case)
 		//The order is very important
 		//We don't need another framebuffer for a different subpass, because we can just specify in the subpass rreferences which attachment ot output to
-		std::array<VkImageView, 3> attachments = {
-			swapChainImages[i].imageView,
-			colourBufferImageView[i],
-			depthBufferImageView[i]  //Now we use a separate depth buffer image for each framebuffer
+		std::array<VkImageView, 4> attachments = {
+			swapChainImages[i].imageView,  //0
+			opaqueColourBufferImageView[i], //1
+			depthBufferImageView[i],  // 2  n//Now we use a separate depth buffer image for each framebuffer
+			accumulationColourBufferImageView[i] //3
 		};
 
 		VkFramebufferCreateInfo framebufferCreateInfo = {};
@@ -1199,7 +1228,7 @@ void VulkanRenderer::createDescriptorPool()
 	//First for the colour input attachment
 	VkDescriptorPoolSize colourInputPoolSize = {};
 	colourInputPoolSize.type = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
-	colourInputPoolSize.descriptorCount = static_cast<uint32_t> (colourBufferImageView.size());
+	colourInputPoolSize.descriptorCount = static_cast<uint32_t> (opaqueColourBufferImageView.size());
 	//And now the depth input attachment
 	VkDescriptorPoolSize depthPoolSize = {};
 	depthPoolSize.type = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
@@ -1312,7 +1341,7 @@ void VulkanRenderer::createInputDescriptorSets()
 		//Colour attachment descriptor
 		VkDescriptorImageInfo colourAttachmentDescriptor = {};
 		colourAttachmentDescriptor.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;  //The format when it's read from
-		colourAttachmentDescriptor.imageView = colourBufferImageView[i];
+		colourAttachmentDescriptor.imageView = opaqueColourBufferImageView[i];
 		colourAttachmentDescriptor.sampler = VK_NULL_HANDLE;		//Cant use sampler because the subpass with the same fragment
 
 		//Colour attachment descriptor write
@@ -1716,9 +1745,6 @@ int VulkanRenderer::createTextureImage(std::string fileName, GeometryPass& texGe
 
 	stbi_uc* imageData = loadTextureFile(fileName, &width, &height, texGeoPass, &imageSize); //Load from the texture file
 
-	
-
-
 	//Now we have the data on the host memory, but we want it on the device memory, so we create a  staging buffer, and use transfer commands
 	VkBuffer imageStagingBuffer;
 	VkDeviceMemory imageStagingBufferMemory;
@@ -1761,11 +1787,8 @@ int VulkanRenderer::createTextureImage(std::string fileName, GeometryPass& texGe
 	return textureImages.size() - 1;
 }
 
-
-
 int VulkanRenderer::createTexture(std::string fileName, GeometryPass& texGeoPass)
 {
-	
 	//First create and get a handle to the texture image, int the texture image array
 	int textureImageLoc = createTextureImage(fileName, texGeoPass);
 
@@ -1870,7 +1893,6 @@ void VulkanRenderer::createMeshModel(std::string modelFile)
 	// Create mesh model and add to list
 	MeshModel meshModel = MeshModel(modelMeshes);//automatically separates the translucent and opaque meshes but it takes time
 	modelList.push_back(meshModel);
-
 }
 
 void VulkanRenderer::recordCommands(uint32_t currentImage)
@@ -1917,12 +1939,12 @@ void VulkanRenderer::recordCommands(uint32_t currentImage)
 		MeshModel thisModel = modelList[j];
 		vkCmdPushConstants(commandBuffers[currentImage], pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(Model), &thisModel.model);
 
-		for (size_t k = 0; k < thisModel.getMeshCount(); k++) {
-			VkBuffer vertexBuffers[] = { thisModel.getMesh(k)->getVertexBuffer() };					// Buffers to bind
+		for (size_t k = 0; k < thisModel.getOpaqueMeshCount(); k++) {
+			VkBuffer vertexBuffers[] = { thisModel.getOpaqueMesh(k)->getVertexBuffer() };					// Buffers to bind
 			VkDeviceSize offsets[] = { 0 };												// Offsets into buffers being bound
 			vkCmdBindVertexBuffers(commandBuffers[currentImage], 0, 1, vertexBuffers, offsets);	// Command to bind vertex buffer before drawing with them
 
-			vkCmdBindIndexBuffer(commandBuffers[currentImage], thisModel.getMesh(k)->getIndexBuffer(), 0, VK_INDEX_TYPE_UINT32);  //Only one index buffer can be bound at a time (even in openGl remember we had to bind vertex array and index buffer separately)
+			vkCmdBindIndexBuffer(commandBuffers[currentImage], thisModel.getOpaqueMesh(k)->getIndexBuffer(), 0, VK_INDEX_TYPE_UINT32);  //Only one index buffer can be bound at a time (even in openGl remember we had to bind vertex array and index buffer separately)
 
 			//Dynamic offset amount
 			//uint32_t dynamicOffset = static_cast<uint16_t>(modelUniformAlignment) * j; //Since j is the mesh number the first mesh will get offset = 0, the next one modelUniformAlignment, the next one 2*modelUniformAlignment and so on
@@ -1932,14 +1954,14 @@ void VulkanRenderer::recordCommands(uint32_t currentImage)
 			//Since push constants do not use buffers they are technically slower, but we avoid the overhead from memory alloc and dealloc(in dynamic uniform buffers), which actually leads to better performance
 
 			std::array<VkDescriptorSet, 2> descriptorSetGroup = { descriptorSets[currentImage],
-					samplerDescriptorSets[thisModel.getMesh(k)->getTexId()] };
+					samplerDescriptorSets[thisModel.getOpaqueMesh(k)->getTexId()] };
 
 			// Bind Descriptor Sets
 			vkCmdBindDescriptorSets(commandBuffers[currentImage], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout,
 				0, static_cast<uint32_t>(descriptorSetGroup.size()), descriptorSetGroup.data(), 0, nullptr);
 			//Remember when we created the pipeline we also specified which subpass will use it(basically one pipeline only works with one subpass)
 			//Now execute the pipeline
-			vkCmdDrawIndexed(commandBuffers[currentImage], thisModel.getMesh(k)->getIndexCount(), 1, 0, 0, 0);
+			vkCmdDrawIndexed(commandBuffers[currentImage], thisModel.getOpaqueMesh(k)->getIndexCount(), 1, 0, 0, 0);
 			//Above command will call pipeline for each vertex i guess(not sure), becasue Vertex shader needs to be called once for each Vertex
 		}
 	}
@@ -1973,13 +1995,11 @@ stbi_uc* VulkanRenderer::loadTextureFile(std::string fileName, int* width, int* 
 		throw std::runtime_error("Error loading a Texture file! (" + fileName + ")");
 	}
 
-	
-
 	if (channels == 3)
 	{
 		geoPass = GeometryPass::OPAQUE_PASS;
 	}
-	else 
+	else
 	{
 		geoPass = GeometryPass::OPAQUE_PASS;
 
@@ -1998,8 +2018,6 @@ stbi_uc* VulkanRenderer::loadTextureFile(std::string fileName, int* width, int* 
 			}
 		}
 	}
-
-	
 
 	// Calculate image size using given and known data
 	*imageSize = *width * *height * 4;

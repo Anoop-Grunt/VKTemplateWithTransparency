@@ -12,18 +12,32 @@ MeshModel::MeshModel(std::vector<Mesh> newMeshList)
 	preprocessModel();
 }
 
-size_t MeshModel::getMeshCount()
+size_t MeshModel::getOpaqueMeshCount()
 {
 	return opaqueMeshes.size();
 }
 
-Mesh* MeshModel::getMesh(size_t index)
+Mesh* MeshModel::getOpaqueMesh(size_t index)
 {
 	if (index >= opaqueMeshes.size()) {
 		throw std::runtime_error("Attemted to Access invalid mesh index");
 	}
 
 	return &opaqueMeshes[index];
+}
+
+size_t MeshModel::getTranslucentMeshCount()
+{
+	return translucentMeshes.size();
+}
+
+Mesh* MeshModel::getTranslucentMesh(size_t index)
+{
+	if (index >= translucentMeshes.size()) {
+		throw std::runtime_error("Attemted to Access invalid mesh index");
+	}
+
+	return &translucentMeshes[index];
 }
 
 glm::mat4 MeshModel::getModel()
