@@ -143,6 +143,11 @@ void VulkanRenderer::cleanup()
 		vkDestroyImage(mainDevice.logicalDevice, textureImages[i], nullptr);
 		vkFreeMemory(mainDevice.logicalDevice, textureImageMemory[i], nullptr);
 	}
+	for (size_t i = 0; i < revealageColourBufferImage.size(); i++) {
+		vkDestroyImageView(mainDevice.logicalDevice, revealageColourBufferImageView[i], nullptr);
+		vkDestroyImage(mainDevice.logicalDevice, revealageColourBufferImage[i], nullptr);
+		vkFreeMemory(mainDevice.logicalDevice, revealageColourBufferImageMemory[i], nullptr);
+	}
 	for (size_t i = 0; i < opaqueColorBufferImage.size(); i++) {
 		vkDestroyImageView(mainDevice.logicalDevice, opaqueColourBufferImageView[i], nullptr);
 		vkDestroyImage(mainDevice.logicalDevice, opaqueColorBufferImage[i], nullptr);
@@ -532,19 +537,41 @@ void VulkanRenderer::createRenderPass()
 	// 2. The depth attachment, is the same Image which was used as the depth attachment of the first subpass, but we will have depth write disabled
 	//The attachment structures are only needed by the render pass create info, so we don't need to create the same attachment again, 
 
+	// 3. The revealage buffer image output attachment
+
+	VkAttachmentDescription revealAttachment = {};
+	revealAttachment.format = chooseSupportedFormat(
+		{ VK_FORMAT_R16_SFLOAT }, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL  //Like the swapchain images earlier
+	);  /// There is no VK_FORMAT_R8_SFLOAT, i mean it's not even in the spec
+	revealAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
+	revealAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+	revealAttachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+	revealAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+	revealAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+	revealAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	revealAttachment.finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;  //since at the end of subpass 2 we output to the revealage buffer too from the translucent geometry shader
+
+
 	//REFERENCES
 	
 	//1. the attachment reference for the accumulation texture
 	VkAttachmentReference accumAttachmentReference = {};
 	accumAttachmentReference.attachment = 3; //the accum texture is the attachment at index 3 of the framebuffer
-	accumAttachmentReference.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL; //the layout the image will be during the subpass
+	accumAttachmentReference.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL; //the layout the image will be in during the subpass
 
 	//2. Depth attachment reference: we can use the reference from earlier
 
+	//3. Reveal attachment reference
+	VkAttachmentReference revealAttachmentReference = {};
+	revealAttachmentReference.attachment = 4; //it's the 4th index attachment of the framebuffer
+	revealAttachmentReference.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL; // layout during the subpass
+
+	std::array<VkAttachmentReference, 2> subpass2ColorAttachmentReferences = {accumAttachmentReference, revealAttachmentReference};
+
 	// Set up subpass 2 (The transparent geometry subpass)
 	subpasses[1].pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-	subpasses[1].colorAttachmentCount = 1;
-	subpasses[1].pColorAttachments = &accumAttachmentReference;
+	subpasses[1].colorAttachmentCount = static_cast<uint32_t> (subpass2ColorAttachmentReferences.size());
+	subpasses[1].pColorAttachments = subpass2ColorAttachmentReferences.data();
 	subpasses[1].pDepthStencilAttachment = &depthAttachmentReference;  //reusing the same attachment reference created for subpass 1
 
 
@@ -572,7 +599,7 @@ void VulkanRenderer::createRenderPass()
 	SwapChainColourAttachmentReference.attachment = 0;
 	SwapChainColourAttachmentReference.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
-	std::array<VkAttachmentReference, 3> inputReferences;
+	std::array<VkAttachmentReference, 4> inputReferences;
 
 	//References to the inputs the next subpass will need
 
@@ -582,6 +609,8 @@ void VulkanRenderer::createRenderPass()
 	inputReferences[1].layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 	inputReferences[2].attachment = 3; // The accumulation color attachment
 	inputReferences[2].layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+	inputReferences[3].attachment = 4; // The revealage color attachment
+	inputReferences[3].layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
 	// Set up Subpass 3 (The composition pass)
 	subpasses[2].pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
@@ -617,6 +646,7 @@ void VulkanRenderer::createRenderPass()
 
 
 	//Subpass 1 to 2 layout transition (opaque subpass to translucent subpass, so the accum image is being transitioned from undefined to color attachment optimal)
+	//the reveal texture is also transitioned in a similar way to the accumulation buffer image
 	subpassDependencies[1].srcSubpass = 0;
 	subpassDependencies[1].srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT; //before the layout transition, we want the color attachment output stage of the opaque subpass to have finished
 	subpassDependencies[1].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
@@ -648,8 +678,7 @@ void VulkanRenderer::createRenderPass()
 	//Vulkan will implictly do the transitions using the dependencies we just provided
 
 	//add all the framebuffer attachments while creating the renderpass
-	//TODO: add the revealage color attachment
-	std::array<VkAttachmentDescription, 4> renderPassAttachments = { SwapChainColourAttachment ,colourAttachment, depthAttachment, accumAttachment }; //Order is very important (same as in framebuffer)
+	std::array<VkAttachmentDescription, 5> renderPassAttachments = { SwapChainColourAttachment ,colourAttachment, depthAttachment, accumAttachment, revealAttachment }; //Order is very important (same as in framebuffer)
 
 	//The render pass create info struct
 	VkRenderPassCreateInfo renderPassCreateInfo = {};
@@ -669,6 +698,10 @@ void VulkanRenderer::createRenderPass()
 
 void VulkanRenderer::createDescriptorSetLayout()
 {
+
+	//---------------UNIFORM BUFFERS----------------------//
+
+
 	//--Create descriptor set layouts for the vp uniform buffers --//
 	// UboViewProjection Binding Info
 	VkDescriptorSetLayoutBinding vpLayoutBinding = {};
@@ -691,7 +724,7 @@ void VulkanRenderer::createDescriptorSetLayout()
 	// Create Descriptor Set Layout with given bindings
 	VkDescriptorSetLayoutCreateInfo layoutCreateInfo = {};
 	layoutCreateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-	layoutCreateInfo.bindingCount = static_cast<uint32_t>(layoutBidnings.size());					// Number of binding infos
+	layoutCreateInfo.bindingCount = static_cast<uint32_t>(layoutBidnings.size());		// Number of binding infos
 	layoutCreateInfo.pBindings = layoutBidnings.data();		// Array of binding infos
 
 	// Create Descriptor Set Layout
@@ -700,6 +733,10 @@ void VulkanRenderer::createDescriptorSetLayout()
 	{
 		throw std::runtime_error("Error creating a Descriptor Set Layout!");
 	}
+
+	
+	//----------------SAMPLERS-----------------------//
+
 
 	//--Create descriptor set layouts for the image sampler --//
 	//Texture binding info
@@ -722,7 +759,12 @@ void VulkanRenderer::createDescriptorSetLayout()
 		throw std::runtime_error("Error creating  sampler descriptor Set Layout!");
 	}
 
-	//Create input attachment descriptor set layout
+	
+
+	//-----------------INPUT ATTACHMENTS------------------------//
+
+
+	//Create input attachments descriptor set layouts
 	//colour input binding (opaque image)
 	VkDescriptorSetLayoutBinding colourInputLayoutBinding = {};
 	colourInputLayoutBinding.binding = 0; //Because it's a separate set
@@ -744,7 +786,14 @@ void VulkanRenderer::createDescriptorSetLayout()
 	accumColorInputLayoutBinding.descriptorCount = 1; 
 	accumColorInputLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 
-	std::vector< VkDescriptorSetLayoutBinding> inputBindings = { colourInputLayoutBinding, depthInputLayoutBinding, accumColorInputLayoutBinding };
+	//Another color input binding (accumulation image)
+	VkDescriptorSetLayoutBinding revealColorInputLayoutBinding = {};
+	revealColorInputLayoutBinding.binding = 3;
+	revealColorInputLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
+	revealColorInputLayoutBinding.descriptorCount = 1;
+	revealColorInputLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+	std::vector< VkDescriptorSetLayoutBinding> inputBindings = { colourInputLayoutBinding, depthInputLayoutBinding, accumColorInputLayoutBinding, revealColorInputLayoutBinding };
 
 	//Create the set layout for the input attachments
 	VkDescriptorSetLayoutCreateInfo inputLayoutCreateInfo = {};
@@ -970,6 +1019,9 @@ void VulkanRenderer::createGraphicsPipeline()
 	vkDestroyShaderModule(mainDevice.logicalDevice, fragmentShaderModule, nullptr);
 	vkDestroyShaderModule(mainDevice.logicalDevice, vertexShaderModule, nullptr);
 
+
+
+
 	//CREATE TRANSLUCENT PASS PIPELINE
 	//translucent geometry pipeline
 	auto translucentVertexShaderCode = readFile("Shaders/translucent_vert.spv");
@@ -987,6 +1039,15 @@ void VulkanRenderer::createGraphicsPipeline()
 
 	// Don't want to write to depth buffer
 	depthStencilCreateInfo.depthWriteEnable = VK_FALSE;
+	
+	
+	//and there are 2 color attachments in this subpass the accumulation color buffer image, and the revealage color buffer image
+	colourBlendingCreateInfo.attachmentCount = 2;
+	//we need different blend states for each of the 2 attachments
+	//the first one can be reused, but we need a new one for the revealage anyway
+
+	std::vector<VkPipelineColorBlendAttachmentState> colourStates = { colourState, colourState };
+	colourBlendingCreateInfo.pAttachments = colourStates.data();
 
 
 	// Create new pipeline layout
@@ -1019,6 +1080,8 @@ void VulkanRenderer::createGraphicsPipeline()
 	vkDestroyShaderModule(mainDevice.logicalDevice, translucentVertexShaderModule, nullptr);
 
 
+
+
 	// CREATE COMPOSITION PASS PIPELINE
 	// composition pass shaders
 	auto compositionVertexShaderCode = readFile("Shaders/second_vert.spv");
@@ -1042,6 +1105,9 @@ void VulkanRenderer::createGraphicsPipeline()
 
 	// Don't want to write to depth buffer
 	depthStencilCreateInfo.depthWriteEnable = VK_FALSE;
+	//there is just on ecolor attachment in this subpass and that is the swapchain image
+	colourBlendingCreateInfo.attachmentCount = 1;
+	colourBlendingCreateInfo.pAttachments = &colourState;
 
 	// Create new pipeline layout
 	VkPipelineLayoutCreateInfo compositionPipelineLayoutCreateInfo = {};
@@ -1118,10 +1184,33 @@ void VulkanRenderer::createColourBufferImages()
 		//now create the image views
 		accumulationColourBufferImageView[i] = createImageView(accumulationColourBufferImage[i], colourFormat, VK_IMAGE_ASPECT_COLOR_BIT);
 	}
+
+
+	//---------------------REVEALAGE COLOUR IMAGE--------------------------------------------//
+
+	revealageColourBufferImage.resize(swapChainImages.size());
+	revealageColourBufferImageView.resize(swapChainImages.size());
+	revealageColourBufferImageMemory.resize(swapChainImages.size());
+
+	//Now get the supported format for the colour attachment
+	colourFormat = chooseSupportedFormat(
+		{ VK_FORMAT_R16_SFLOAT }, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL  //Like the swapchain images earlier
+	);  //as can be seen we need atleats 16 bits for each of the accumulation texture channels
+
+	//Now create the reveal color images for each swapchain image
+	for (size_t i = 0; i < revealageColourBufferImage.size(); i++) {
+		//create the image
+		//the usage flags are again output attachment for subpass 2 and inupt for subpass 3
+		revealageColourBufferImage[i] = createImage(swapChainExtent.width, swapChainExtent.height, colourFormat, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &revealageColourBufferImageMemory[i]);
+		//now create the image views
+		revealageColourBufferImageView[i] = createImageView(revealageColourBufferImage[i], colourFormat, VK_IMAGE_ASPECT_COLOR_BIT);
+	}
 }
 
 void VulkanRenderer::createDepthBufferImage()
 {
+
+	//TODO: The nvidia page says that using 24 bit images for the depth buffer leads to better performance, so test that
 	//Resize the depthbuffer images vector to the number of swapchain images
 	depthBufferImage.resize(swapChainImages.size());
 	depthBufferImageView.resize(swapChainImages.size());
@@ -1159,11 +1248,12 @@ void VulkanRenderer::createFramebuffers()
 		//We add both the color, and the depth attachments (which are image views in this case)
 		//The order is very important
 		//We don't need another framebuffer for a different subpass, because we can just specify in the subpass rreferences which attachment ot output to
-		std::array<VkImageView, 4> attachments = {
-			swapChainImages[i].imageView,  //0
-			opaqueColourBufferImageView[i], //1
-			depthBufferImageView[i],  // 2  n//Now we use a separate depth buffer image for each framebuffer
-			accumulationColourBufferImageView[i] //3
+		std::array<VkImageView, 5> attachments = {
+			swapChainImages[i].imageView,  //0   swapchain image
+			opaqueColourBufferImageView[i], //1  opaque texture
+			depthBufferImageView[i],  // 2  Now we use a separate depth buffer image for each framebuffer
+			accumulationColourBufferImageView[i], //3   accumulation buffer image
+			revealageColourBufferImageView[i] //4        revealage buffer image
 		};
 
 		VkFramebufferCreateInfo framebufferCreateInfo = {};
@@ -1353,17 +1443,24 @@ void VulkanRenderer::createDescriptorPool()
 	VkDescriptorPoolSize colourInputPoolSize = {};
 	colourInputPoolSize.type = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
 	colourInputPoolSize.descriptorCount = static_cast<uint32_t> (opaqueColourBufferImageView.size());
+
 	//And now the depth input attachment
 	VkDescriptorPoolSize depthPoolSize = {};
 	depthPoolSize.type = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
 	depthPoolSize.descriptorCount = static_cast<uint32_t> (depthBufferImageView.size());
+
 	//Another color attachment for the accumulation buffer input attachment
 	VkDescriptorPoolSize accumColorInputPoolSize = {};
 	accumColorInputPoolSize.type = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
 	accumColorInputPoolSize.descriptorCount = static_cast<uint32_t> (accumulationColourBufferImageView.size());  //one descriptor for each image
 
+	//Another color attachment for the reveal color buffer input attachment
+	VkDescriptorPoolSize revealColourPoolSize = {};
+	revealColourPoolSize.type = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
+	revealColourPoolSize.descriptorCount = static_cast<uint32_t> (revealageColourBufferImageView.size());
+
 	//Create an array of pool sizes
-	std::vector<VkDescriptorPoolSize> inputPoolSizes = { colourInputPoolSize , depthPoolSize, accumColorInputPoolSize };
+	std::vector<VkDescriptorPoolSize> inputPoolSizes = { colourInputPoolSize , depthPoolSize, accumColorInputPoolSize, revealColourPoolSize };
 
 	//Create a descriptor pool for the attachments using the above sizes
 	VkDescriptorPoolCreateInfo inputPoolCreateInfo = {};
@@ -1514,9 +1611,26 @@ void VulkanRenderer::createInputDescriptorSets()
 		accumDescriptorWrite.descriptorCount = 1;
 		accumDescriptorWrite.pImageInfo = &accumAttachmentDescriptor;
 
+		//and finally the revealage colour buffer image descriptpr write
+		//first the descriptor 
+		VkDescriptorImageInfo revealAttachmentDescriptor = {};
+		revealAttachmentDescriptor.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;  //The format when it's read from
+		revealAttachmentDescriptor.imageView = revealageColourBufferImageView[i];
+		revealAttachmentDescriptor.sampler = VK_NULL_HANDLE;
+
+		//then the descriptor write
+		VkWriteDescriptorSet revealDescriptorWrite = {};
+		revealDescriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		revealDescriptorWrite.dstSet = inputDescriptorSets[i];
+		revealDescriptorWrite.dstBinding = 3; //binding 3 of the input descriptor set is the revealage image, check the set layouts (of the input descriptor set --> inputDesciptorSetLayout) if confused
+		revealDescriptorWrite.dstArrayElement = 0;
+		revealDescriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
+		revealDescriptorWrite.descriptorCount = 1;
+		revealDescriptorWrite.pImageInfo = &revealAttachmentDescriptor;
+
 
 		// List of input descriptor set writes
-		std::vector<VkWriteDescriptorSet> setWrites = { colourWrite, depthWrite, accumDescriptorWrite };
+		std::vector<VkWriteDescriptorSet> setWrites = { colourWrite, depthWrite, accumDescriptorWrite, revealDescriptorWrite };
 		// Update descriptor sets
 		vkUpdateDescriptorSets(mainDevice.logicalDevice, static_cast<uint32_t>(setWrites.size()), setWrites.data(), 0, nullptr);
 	}
@@ -2057,11 +2171,12 @@ void VulkanRenderer::recordCommands(uint32_t currentImage)
 	renderPassBeginInfo.renderArea.extent = swapChainExtent;
 
 	//We build the clear values (an array of clearValues)
-	std::array<VkClearValue, 4> clearValues = {};
+	std::array<VkClearValue, 5> clearValues = {};
 	clearValues[0].color = { 1.f, 1.f, 1.f, 1.0f };  //swapchain image clear color
 	clearValues[1].color = { 1.f, 1.f, 1.f, 1.0f };  //opaque image clear color
 	clearValues[2].depthStencil.depth = 1.0f;  //depth image clear color
-	clearValues[3].color = {1.f, 1.f, 1.f, 1.f}; //accumulation buffer image clear color
+	clearValues[3].color = {0.f, 0.f, 0.f, 0.f}; //accumulation buffer image clear color
+	clearValues[4].color = { 0.0f, 1.f, 1.f, 1.f }; //accumulation buffer image clear color
 	//Order is really important for the clear values
 
 	renderPassBeginInfo.pClearValues = clearValues.data();    //List of clear values
@@ -2192,7 +2307,6 @@ stbi_uc* VulkanRenderer::loadTextureFile(std::string fileName, int* width, int* 
 			}
 		}
 	}
-
 	// Calculate image size using given and known data
 	*imageSize = *width * *height * 4;
 

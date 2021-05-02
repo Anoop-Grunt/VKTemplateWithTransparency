@@ -85,6 +85,10 @@ private:
 	std::vector<VkDeviceMemory> accumulationColourBufferImageMemory; //One for each swapchain image
 	std::vector <VkImageView> accumulationColourBufferImageView;   //One for each image
 
+	std::vector<VkImage> revealageColourBufferImage;   //One for each swapchain image
+	std::vector<VkDeviceMemory> revealageColourBufferImageMemory; //One for each swapchain image
+	std::vector <VkImageView> revealageColourBufferImageView;   //One for each image
+
 	std::vector<VkImage> depthBufferImage;    //Now we need one for every image, because we dont want to use the  depth buffer image after the first subpass finished rendering(for the second subpass)
 	std::vector<VkDeviceMemory> depthBufferImageMemory; //Again one for each image
 	std::vector <VkImageView> depthBufferImageView;   //One for each image
