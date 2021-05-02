@@ -1029,6 +1029,10 @@ void VulkanRenderer::createGraphicsPipeline()
 
 	//CREATE TRANSLUCENT PASS PIPELINE
 	//translucent geometry pipeline
+
+	//disabling backface culling for the translucency subpass
+	rasterizerCreateInfo.cullMode = VK_CULL_MODE_NONE;
+
 	auto translucentVertexShaderCode = readFile("Shaders/translucent_vert.spv");
 	auto translucentFragmentShaderCode = readFile("Shaders/translucent_frag.spv");
 
@@ -1148,6 +1152,8 @@ void VulkanRenderer::createGraphicsPipeline()
 	compositionPipelineLayoutCreateInfo.pSetLayouts = &inputSetLayout;
 	compositionPipelineLayoutCreateInfo.pushConstantRangeCount = 0;
 	compositionPipelineLayoutCreateInfo.pPushConstantRanges = nullptr;
+
+
 
 	result = vkCreatePipelineLayout(mainDevice.logicalDevice, &compositionPipelineLayoutCreateInfo, nullptr, &compositionPipelineLayout);
 	if (result != VK_SUCCESS)
@@ -2203,8 +2209,8 @@ void VulkanRenderer::recordCommands(uint32_t currentImage)
 
 	//We build the clear values (an array of clearValues)
 	std::array<VkClearValue, 5> clearValues = {};
-	clearValues[0].color = { 1.f, 1.f, 1.f, 1.0f };  //swapchain image clear color
-	clearValues[1].color = { 1.f, 1.f, 1.f, 1.0f };  //opaque image clear color
+	clearValues[0].color = { 0.f, 0.f, 0.f, 0.0f };  //swapchain image clear color
+	clearValues[1].color = { 0.f, 0.f, 0.f, 0.0f };  //opaque image clear color
 	clearValues[2].depthStencil.depth = 1.0f;  //depth image clear color
 	clearValues[3].color = {0.f, 0.f, 0.f, 0.f}; //accumulation buffer image clear color
 	clearValues[4].color = { 1.f, 0.f, 0.f, 0.f }; //revealage buffer image clear color
