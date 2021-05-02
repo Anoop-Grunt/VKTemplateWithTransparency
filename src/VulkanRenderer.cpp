@@ -1065,7 +1065,7 @@ void VulkanRenderer::createGraphicsPipeline()
 	colourStateAccumulation.colorBlendOp = VK_BLEND_OP_ADD;
 	//T
 	colourStateAccumulation.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
-	colourStateAccumulation.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+	colourStateAccumulation.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
 	colourStateAccumulation.alphaBlendOp = VK_BLEND_OP_ADD;
 
 
