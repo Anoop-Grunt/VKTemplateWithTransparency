@@ -641,7 +641,7 @@ void VulkanRenderer::createRenderPass()
 	subpassDependencies[1].dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT; //and the layout transition needs to happen before the translucent subpass tries to read from its depth buffer (depth stencil attachment)
 	subpassDependencies[1].dependencyFlags = 0;
 	//TODO: if the above destination stage mask, and access mask don't work, try making the stage = fragment shader bit, and the access flag = shader read bit. Doing this will force the layout transition before the frag shader tries to read from uniform buffers, or samplers etc. By doing this we are not delaying the layout transition as much as possible, so prolly it's not as optimal as we'd like
-
+	//TODO: Add early fragment testing and then test performance
 	//subpass 2 to subpass 3 layout transitions (the input attachments get converted from colour attachment optimal to shader read only optimal, and the output attachment which is the swapchain image is transitioned from undefined to color attachment optimal)
 	subpassDependencies[2].srcSubpass = 1;
 	subpassDependencies[2].srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT; //we want the color attachment output stage of subpass 1 to be finished before the layout transition
