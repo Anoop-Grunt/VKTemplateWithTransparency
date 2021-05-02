@@ -75,6 +75,10 @@ void VulkanRenderer::draw()
 	uint32_t imageIndex = 0;
 	vkAcquireNextImageKHR(mainDevice.logicalDevice, swapChain, std::numeric_limits<uint64_t>::max(), imageAvailable[currentFrame], VK_NULL_HANDLE, &imageIndex);
 
+
+	//TODO: from the NVIDIA vulkan tips page --> recording command buffers is a CPU intensive task and no driver threads come to the rescue, so try to mutlithread it.
+	//TODO:Use a separate command pool for each thread which records command buffers, for each frame. Before starting work on this part, please first check the vulkan do's and dont's section on this.
+	//
 	//Update the uniform buffers
 	recordCommands(imageIndex);  //The reason we send imageIndex to the record function is because if we try to re record all the command buffers(like we originally were) in the record function, we might be rtrying to re record on command buffers that are still in use by the queue
 	updateUniformBuffers(imageIndex);
@@ -415,6 +419,7 @@ void VulkanRenderer::CreateLogicalDevice()
 	//Physical device deviceFeatures that the logicval device will be using need to be specified in a struct, and passed to deviceCreateInfo
 	VkPhysicalDeviceFeatures deviceFeatures = {};
 	deviceFeatures.samplerAnisotropy = VK_TRUE;
+	deviceFeatures.independentBlend = VK_TRUE;
 
 	deviceCreateInfo.pEnabledFeatures = &deviceFeatures;
 
@@ -1045,8 +1050,35 @@ void VulkanRenderer::createGraphicsPipeline()
 	colourBlendingCreateInfo.attachmentCount = 2;
 	//we need different blend states for each of the 2 attachments
 	//the first one can be reused, but we need a new one for the revealage anyway
+	//the accumulation image needs to be set to GL_ONE, GL_ONE and the revealage needs GL_ZERO and GL_ONE_MINUS_SRC_ALPHA
+	
+	VkPipelineColorBlendAttachmentState colourStateAccumulation= {};
+	colourStateAccumulation.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT
+		| VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+	colourStateAccumulation.blendEnable = VK_TRUE;
+	colourStateAccumulation.srcColorBlendFactor = VK_BLEND_FACTOR_ONE;
+	colourStateAccumulation.dstColorBlendFactor = VK_BLEND_FACTOR_ONE;
+	colourStateAccumulation.colorBlendOp = VK_BLEND_OP_ADD;
+	//T
+	colourStateAccumulation.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+	colourStateAccumulation.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+	colourStateAccumulation.alphaBlendOp = VK_BLEND_OP_ADD;
 
-	std::vector<VkPipelineColorBlendAttachmentState> colourStates = { colourState, colourState };
+
+	VkPipelineColorBlendAttachmentState colourStateRevealage = {};
+	colourStateRevealage.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT
+		| VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+	colourStateRevealage.blendEnable = VK_TRUE;
+	colourStateRevealage.srcColorBlendFactor = VK_BLEND_FACTOR_ZERO;
+	colourStateRevealage.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_COLOR;
+	colourStateRevealage.colorBlendOp = VK_BLEND_OP_ADD;
+	//The alpha values can't really blend because there is no alpha channel here
+	colourStateRevealage.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+	colourStateRevealage.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+	colourStateRevealage.alphaBlendOp = VK_BLEND_OP_ADD;
+
+
+	std::vector<VkPipelineColorBlendAttachmentState> colourStates = { colourStateAccumulation, colourStateRevealage };
 	colourBlendingCreateInfo.pAttachments = colourStates.data();
 
 
@@ -1210,7 +1242,6 @@ void VulkanRenderer::createColourBufferImages()
 void VulkanRenderer::createDepthBufferImage()
 {
 
-	//TODO: The nvidia page says that using 24 bit images for the depth buffer leads to better performance, so test that
 	//Resize the depthbuffer images vector to the number of swapchain images
 	depthBufferImage.resize(swapChainImages.size());
 	depthBufferImageView.resize(swapChainImages.size());
@@ -1218,7 +1249,7 @@ void VulkanRenderer::createDepthBufferImage()
 
 	//First get the format
 	VkFormat depthFormat = chooseSupportedFormat(
-		{ VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D32_SFLOAT, VK_FORMAT_D24_UNORM_S8_UINT },
+		{ VK_FORMAT_D24_UNORM_S8_UINT,  VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D32_SFLOAT },
 		VK_IMAGE_TILING_OPTIMAL,
 		VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT);
 
@@ -1802,7 +1833,7 @@ bool VulkanRenderer::checkPhysicalDeviceSuitable(VkPhysicalDevice physicalDevice
 	}
 
 	//return if the device satisfies all the requirements
-	return indices.isValid() && extensionSupported && swapChainValid && deviceFeatures.samplerAnisotropy;
+	return indices.isValid() && extensionSupported && swapChainValid && deviceFeatures.samplerAnisotropy && deviceFeatures.independentBlend;
 }
 
 void VulkanRenderer::populateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT& createInfo)
@@ -2176,7 +2207,7 @@ void VulkanRenderer::recordCommands(uint32_t currentImage)
 	clearValues[1].color = { 1.f, 1.f, 1.f, 1.0f };  //opaque image clear color
 	clearValues[2].depthStencil.depth = 1.0f;  //depth image clear color
 	clearValues[3].color = {0.f, 0.f, 0.f, 0.f}; //accumulation buffer image clear color
-	clearValues[4].color = { 0.0f, 1.f, 1.f, 1.f }; //accumulation buffer image clear color
+	clearValues[4].color = { 1.f, 0.f, 0.f, 0.f }; //revealage buffer image clear color
 	//Order is really important for the clear values
 
 	renderPassBeginInfo.pClearValues = clearValues.data();    //List of clear values
