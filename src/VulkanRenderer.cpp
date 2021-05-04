@@ -2229,7 +2229,7 @@ void VulkanRenderer::recordCommands(uint32_t currentImage)
 	vkCmdBindPipeline(commandBuffers[currentImage], VK_PIPELINE_BIND_POINT_GRAPHICS, translucentGeometryPipeline);
 	for (size_t j = 0; j < modelList.size(); j++) {
 		MeshModel thisModel = modelList[j];
-		vkCmdPushConstants(commandBuffers[currentImage], pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(Model), &thisModel.model);
+		vkCmdPushConstants(commandBuffers[currentImage], translucentGeometryPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(Model), &thisModel.model);
 
 		for (size_t k = 0; k < thisModel.getTranslucentMeshCount(); k++) {
 			VkBuffer vertexBuffers[] = { thisModel.getTranslucentMesh(k)->getVertexBuffer() };					// Buffers to bind
